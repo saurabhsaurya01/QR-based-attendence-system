@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QR Attendance · Sign in</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="bar">
+  <h1>QR ATTENDANCE SYSTEM</h1>
+</header>
+
+<div class="wrap narrow">
+
+  <div class="card">
+    <h2>Welcome</h2>
+    <h3>Sign in to mark or take attendance</h3>
+
+    <div class="tabs">
+      <button id="tabLogin" class="on">Sign in</button>
+      <button id="tabRegister">Create account</button>
+      <button id="tabConfirm">Enter code</button>
+    </div>
+
+    <div id="msg" class="msg hide"></div>
+
+    <!-- ------------ SIGN IN ------------ -->
+    <div id="paneLogin">
+      <label for="li_email">Email</label>
+      <input id="li_email" type="email" autocomplete="username" placeholder="you@college.edu">
+      <label for="li_pass">Password</label>
+      <input id="li_pass" type="password" autocomplete="current-password" placeholder="Your password">
+      <div style="height:16px"></div>
+      <button id="btnLogin" style="width:100%">Sign in</button>
+    </div>
+
+    <!-- ------------ REGISTER ------------ -->
+    <div id="paneRegister" class="hide">
+      <label for="rg_name">Full name</label>
+      <input id="rg_name" placeholder="Saurav Kumar">
+      <label for="rg_email">Email</label>
+      <input id="rg_email" type="email" autocomplete="username" placeholder="you@college.edu">
+      <label for="rg_pass">Password</label>
+      <input id="rg_pass" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+      <p style="font-size:13px;color:var(--ink-soft);margin:8px 0 0">
+        Password needs 8+ characters with an uppercase letter, a lowercase letter,
+        a number and a symbol.
+      </p>
+      <div style="height:12px"></div>
+      <button id="btnRegister" style="width:100%">Create account</button>
+    </div>
+
+    <!-- ------------ CONFIRM EMAIL CODE ------------ -->
+    <div id="paneConfirm" class="hide">
+      <p style="font-size:14px;color:var(--ink-soft);margin:0">
+        Amazon Cognito emailed you a 6-digit code. Enter it here to activate your account.
+      </p>
+      <label for="cf_email">Email</label>
+      <input id="cf_email" type="email" placeholder="you@college.edu">
+      <label for="cf_code">Confirmation code</label>
+      <input id="cf_code" inputmode="numeric" placeholder="123456">
+      <div style="height:16px"></div>
+      <button id="btnConfirm" style="width:100%">Activate account</button>
+      <div style="height:8px"></div>
+      <button id="btnResend" class="ghost small" style="width:100%">Send the code again</button>
+    </div>
+  </div>
+
+  <div class="card" id="demoHelp">
+    <h2>Demo accounts</h2>
+    <p style="font-size:14px;margin:0 0 8px">
+      Nothing is connected to AWS yet, so you can try the whole system right now:
+    </p>
+    <ul class="ledger">
+      <li><span class="name">Teacher</span>
+          <span class="meta">teacher@demo.com / Demo@1234</span></li>
+      <li><span class="name">Student</span>
+          <span class="meta">student@demo.com / Demo@1234</span></li>
+    </ul>
+  </div>
+
+</div>
+
+<footer class="made">MADE BY SAURAV</footer>
+
+<script src="assets/config.js"></script>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  if (!DEMO) $("#demoHelp").classList.add("hide");
+  if (Auth.loggedIn()) routeByRole().catch(() => {});
+
+  const panes = { Login: $("#paneLogin"), Register: $("#paneRegister"), Confirm: $("#paneConfirm") };
+  const tabs  = { Login: $("#tabLogin"),  Register: $("#tabRegister"),  Confirm: $("#tabConfirm") };
+
+  function show(which) {
+    for (const k in panes) {
+      panes[k].classList.toggle("hide", k !== which);
+      tabs[k].classList.toggle("on", k === which);
+    }
+    hideMsg("#msg");
+  }
+  for (const k in tabs) tabs[k].onclick = () => show(k);
+
+  async function run(btn, fn) {
+    btn.disabled = true;
+    try { await fn(); }
+    catch (e) { showMsg("#msg", e.message, "err"); }
+    finally { btn.disabled = false; }
+  }
+
+  $("#btnLogin").onclick = () => run($("#btnLogin"), async () => {
+    await Auth.login($("#li_email").value.trim(), $("#li_pass").value);
+    showMsg("#msg", "Signed in. Loading your dashboard...", "ok");
+    await routeByRole();
+  });
+
+  $("#btnRegister").onclick = () => run($("#btnRegister"), async () => {
+    const r = await Auth.register(
+      $("#rg_email").value.trim(), $("#rg_pass").value, $("#rg_name").value.trim());
+    if (r.needsCode) {
+      $("#cf_email").value = $("#rg_email").value.trim();
+      show("Confirm");
+      showMsg("#msg", "Account created. Check your email for the 6-digit code.", "ok");
+    } else {
+      show("Login");
+      showMsg("#msg", "Account created. You can sign in now.", "ok");
+    }
+  });
+
+  $("#btnConfirm").onclick = () => run($("#btnConfirm"), async () => {
+    await Auth.confirm($("#cf_email").value.trim(), $("#cf_code").value.trim());
+    show("Login");
+    showMsg("#msg", "Account activated. Please sign in.", "ok");
+  });
+
+  $("#btnResend").onclick = () => run($("#btnResend"), async () => {
+    await Auth.resendCode($("#cf_email").value.trim());
+    showMsg("#msg", "A new code is on its way.", "ok");
+  });
+
+  // Enter key signs in
+  $("#li_pass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#btnLogin").click(); });
+})();
+</script>
+</body>
+</html>

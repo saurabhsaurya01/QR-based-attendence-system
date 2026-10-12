@@ -1,0 +1,159 @@
+/* ===================================================================
+   QR Attendance System - stylesheet
+   Made by Saurav
+   Motif: engineering-college graph paper. Ink navy on grid, with a
+   single bold moment - the QR countdown ring.
+   =================================================================== */
+
+:root{
+  --ink:#16243B;
+  --ink-soft:#5A6B84;
+  --paper:#EEF1F5;
+  --card:#FFFFFF;
+  --line:#D3DBE6;
+  --grid:#DCE3EC;
+  --green:#0E8A5F;
+  --green-soft:#E4F4ED;
+  --amber:#C77400;
+  --red:#B3261E;
+  --red-soft:#FBEAE9;
+  --radius:10px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  font-family:var(--sans);
+  color:var(--ink);
+  background-color:var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:24px 24px;
+  line-height:1.5;
+  -webkit-text-size-adjust:100%;
+}
+
+/* ---------- layout ---------- */
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+.narrow{max-width:440px}
+
+header.bar{
+  background:var(--ink);color:#fff;
+  padding:12px 16px;
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+}
+header.bar h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.02em}
+header.bar .who{margin-left:auto;font-size:13px;opacity:.85;font-family:var(--mono)}
+header.bar button{background:#2C3D5C;color:#fff;border:0}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:16px;
+  margin-bottom:16px;
+}
+.card h2{margin:0 0 4px;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
+.card h3{margin:0 0 12px;font-size:20px;font-weight:650}
+
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.grow{flex:1;min-width:140px}
+.spread{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+
+/* ---------- controls ---------- */
+label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}
+input,select{
+  width:100%;padding:11px 12px;font-size:16px;font-family:inherit;
+  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);
+}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+
+button{
+  padding:11px 16px;font-size:15px;font-weight:600;font-family:inherit;
+  border:0;border-radius:8px;background:var(--ink);color:#fff;cursor:pointer;
+}
+button:hover{opacity:.9}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.danger{background:var(--red)}
+button.small{padding:7px 11px;font-size:13px}
+
+.tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line)}
+.tabs button{
+  background:transparent;color:var(--ink-soft);border-radius:0;
+  border-bottom:2px solid transparent;padding:10px 14px;font-size:14px;
+}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--ink)}
+
+/* ---------- ledger list ---------- */
+.ledger{list-style:none;margin:0;padding:0}
+.ledger li{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 4px;border-bottom:1px dashed var(--line);
+}
+.ledger li:last-child{border-bottom:0}
+.ledger .name{flex:1;font-weight:600}
+.ledger .meta{font-family:var(--mono);font-size:12px;color:var(--ink-soft)}
+
+.pill{
+  font-family:var(--mono);font-size:12px;font-weight:700;
+  padding:3px 8px;border-radius:999px;background:var(--paper);color:var(--ink-soft);
+}
+.pill.ok{background:var(--green-soft);color:var(--green)}
+.pill.no{background:var(--red-soft);color:var(--red)}
+
+.code{
+  font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:.18em;
+  background:var(--ink);color:#fff;padding:6px 12px;border-radius:6px;display:inline-block;
+}
+
+.empty{color:var(--ink-soft);font-size:14px;padding:14px 0}
+
+/* ---------- the signature moment: QR + countdown ring ---------- */
+.qrstage{text-align:center;padding:8px 0 4px}
+.qrframe{
+  position:relative;display:inline-block;
+  padding:18px;background:#fff;border:2px solid var(--ink);border-radius:14px;
+}
+.qrframe canvas{display:block;width:min(74vw,300px);height:auto;image-rendering:pixelated}
+.ring{
+  position:absolute;top:-16px;right:-16px;
+  width:56px;height:56px;border-radius:50%;
+  background:conic-gradient(var(--green) var(--deg,360deg), var(--line) 0);
+  display:grid;place-items:center;
+}
+.ring span{
+  width:44px;height:44px;border-radius:50%;background:#fff;
+  display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:17px;
+}
+.qrstage .hint{font-size:13px;color:var(--ink-soft);margin-top:12px}
+
+/* ---------- scanner ---------- */
+#reader{width:100%;max-width:400px;margin:0 auto;border-radius:12px;overflow:hidden}
+#reader video{width:100%!important}
+
+/* ---------- messages ---------- */
+.msg{padding:11px 13px;border-radius:8px;font-size:14px;margin:12px 0;font-weight:500}
+.msg.ok{background:var(--green-soft);color:var(--green)}
+.msg.err{background:var(--red-soft);color:var(--red)}
+.msg.info{background:#E7EDF6;color:var(--ink)}
+.hide{display:none!important}
+
+.bignum{font-size:42px;font-weight:700;line-height:1;font-family:var(--mono)}
+.bignum small{font-size:14px;font-weight:600;color:var(--ink-soft);display:block;margin-top:4px;font-family:var(--sans)}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft)}
+td.num{font-family:var(--mono)}
+
+footer.made{
+  text-align:center;padding:24px 16px;font-size:12px;color:var(--ink-soft);
+  font-family:var(--mono);letter-spacing:.08em;
+}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QR Attendance · Student</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="bar">
+  <h1>QR ATTENDANCE · STUDENT</h1>
+  <span class="who"></span>
+  <button class="small" id="btnOut">Sign out</button>
+</header>
+
+<div class="wrap">
+
+  <div class="tabs">
+    <button data-tab="scan" class="on">Scan</button>
+    <button data-tab="classes">My classes</button>
+    <button data-tab="history">My attendance</button>
+  </div>
+
+  <div id="msg" class="msg hide"></div>
+
+  <!-- ============ SCAN ============ -->
+  <section data-pane="scan">
+    <div class="card">
+      <h2>Mark attendance</h2>
+      <h3>Point your camera at the code on the screen</h3>
+      <div id="reader"></div>
+      <div style="height:12px"></div>
+      <div class="row">
+        <button id="btnScan" class="grow">Open camera</button>
+        <button id="btnStop" class="ghost grow hide">Stop camera</button>
+      </div>
+      <p class="hint" style="font-size:13px;color:var(--ink-soft)">
+        The code on your teacher's screen changes every 10 seconds. Scan the one showing
+        right now — an old screenshot will be rejected.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>No camera?</h2>
+      <p style="font-size:14px;margin:0 0 8px">
+        If the camera will not open, ask your teacher to read out the code text and type it here.
+      </p>
+      <div class="row">
+        <input id="manualToken" class="grow" placeholder="Paste the code text">
+        <button id="btnManualMark">Mark present</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MY CLASSES ============ -->
+  <section data-pane="classes" class="hide">
+    <div class="card">
+      <h2>Join a class</h2>
+      <div class="row">
+        <input id="joinCode" class="grow" placeholder="6-character code from your teacher"
+               style="text-transform:uppercase;font-family:var(--mono);letter-spacing:.15em">
+        <button id="btnJoin">Join class</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>My classes</h2>
+      <div id="classList"><p class="empty">Loading...</p></div>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section data-pane="history" class="hide">
+    <div class="card">
+      <h2>My percentage</h2>
+      <div id="summary"><p class="empty">Loading...</p></div>
+    </div>
+    <div class="card">
+      <h2>Every time I was marked present</h2>
+      <div id="records"><p class="empty">Loading...</p></div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="made">MADE BY SAURAV</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/app.js"></script>
+<script>
+(async function () {
+  const user = await guard(["student"]);
+  if (!user) return;
+
+  $("#btnOut").onclick = () => Auth.logout();
+
+  $$(".tabs button").forEach((b) => b.onclick = () => {
+    $$(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+    $$("section[data-pane]").forEach((s) =>
+      s.classList.toggle("hide", s.dataset.pane !== b.dataset.tab));
+    hideMsg("#msg");
+    if (b.dataset.tab !== "scan") stopScanner();
+    if (b.dataset.tab === "history") loadHistory();
+    if (b.dataset.tab === "classes") loadClasses();
+  });
+
+  const err = (e) => showMsg("#msg", e.message, "err");
+  const ok  = (t) => showMsg("#msg", t, "ok");
+
+  /* ================= SCANNER ================= */
+
+  let scanner = null, busy = false;
+
+  $("#btnScan").onclick = async () => {
+    try {
+      if (!window.Html5Qrcode) throw new Error("Scanner library did not load. Check your internet.");
+      scanner = new Html5Qrcode("reader");
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        onScan,
+        () => {}                       // ignore "no code in this frame"
+      );
+      $("#btnScan").classList.add("hide");
+      $("#btnStop").classList.remove("hide");
+      hideMsg("#msg");
+    } catch (e) {
+      err(new Error("Could not open the camera. The page must be on https, and you must "
+        + "allow camera access. (" + e.message + ")"));
+    }
+  };
+
+  $("#btnStop").onclick = stopScanner;
+
+  async function stopScanner() {
+    if (!scanner) return;
+    try { await scanner.stop(); scanner.clear(); } catch {}
+    scanner = null;
+    $("#btnScan").classList.remove("hide");
+    $("#btnStop").classList.add("hide");
+  }
+
+  async function onScan(text) {
+    if (busy) return;
+    busy = true;
+    await mark(text);
+    setTimeout(() => { busy = false; }, 2500);   // avoid firing 10x per second
+  }
+
+  async function mark(token) {
+    try {
+      const r = await api("POST", "/api/attendance/mark", { body: { token } });
+      if (r.alreadyMarked) ok("You are already marked present for this class.");
+      else ok("Attendance marked successfully — " + (r.className || ""));
+      if (navigator.vibrate) navigator.vibrate(120);
+      loadHistory();
+    } catch (e) { err(e); }
+  }
+
+  $("#btnManualMark").onclick = () => mark($("#manualToken").value.trim());
+
+  /* ================= CLASSES ================= */
+
+  async function loadClasses() {
+    try {
+      const r = await api("GET", "/api/classes");
+      $("#classList").innerHTML = r.classes.length
+        ? `<ul class="ledger">${r.classes.map((c) => `
+            <li><span class="name">${esc(c.name)}<br>
+                <span class="meta">${esc(c.subject || "—")} · ${esc(c.teacherName || "")}</span>
+              </span></li>`).join("")}</ul>`
+        : `<p class="empty">You have not joined any class yet. Use the join code above.</p>`;
+    } catch (e) { err(e); }
+  }
+
+  $("#btnJoin").onclick = async () => {
+    try {
+      const r = await api("POST", "/api/enrollments/join",
+        { body: { joinCode: $("#joinCode").value.trim() } });
+      $("#joinCode").value = "";
+      ok("Joined " + r.class.name + ".");
+      loadClasses();
+    } catch (e) { err(e); }
+  };
+
+  /* ================= HISTORY ================= */
+
+  async function loadHistory() {
+    try {
+      const r = await api("GET", "/api/attendance/me");
+
+      $("#summary").innerHTML = r.summary.length
+        ? `<table><tr><th>Class</th><th>Attended</th><th>Held</th><th>Percentage</th></tr>
+            ${r.summary.map((s) => `<tr>
+              <td>${esc(s.className)}</td>
+              <td class="num">${s.attended}</td>
+              <td class="num">${s.totalSessions}</td>
+              <td class="num"><span class="pill ${s.percentage >= 75 ? "ok" : "no"}">${s.percentage}%</span></td>
+            </tr>`).join("")}</table>`
+        : `<p class="empty">Join a class to see your percentage.</p>`;
+
+      $("#records").innerHTML = r.records.length
+        ? `<ul class="ledger">${r.records.map((x) => `
+            <li><span class="name">${esc(x.className)}</span>
+                <span class="pill ok">${x.method}</span>
+                <span class="meta">${when(x.markedAt)}</span></li>`).join("")}</ul>`
+        : `<p class="empty">No attendance recorded yet.</p>`;
+    } catch (e) { err(e); }
+  }
+
+  await loadClasses();
+})();
+</script>
+</body>
+</html>

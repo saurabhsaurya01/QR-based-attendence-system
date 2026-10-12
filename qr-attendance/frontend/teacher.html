@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QR Attendance · Teacher</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="bar">
+  <h1>QR ATTENDANCE · TEACHER</h1>
+  <span class="who"></span>
+  <button class="small" id="btnOut">Sign out</button>
+</header>
+
+<div class="wrap">
+
+  <div class="tabs">
+    <button data-tab="classes" class="on">Classes</button>
+    <button data-tab="live">Live session</button>
+    <button data-tab="history">History</button>
+    <button data-tab="report">Report</button>
+  </div>
+
+  <div id="msg" class="msg hide"></div>
+
+  <!-- ============ CLASSES ============ -->
+  <section data-pane="classes">
+    <div class="card">
+      <h2>New class</h2>
+      <div class="row">
+        <input id="c_name" class="grow" placeholder="Class name, e.g. CSE 3A">
+        <input id="c_sub" class="grow" placeholder="Subject, e.g. DBMS">
+        <button id="btnCreateClass">Create class</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>My classes</h2>
+      <div id="classList"><p class="empty">Loading...</p></div>
+    </div>
+
+    <div class="card hide" id="classDetail">
+      <div class="spread">
+        <div>
+          <h2>Selected class</h2>
+          <h3 id="d_name"></h3>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:12px;color:var(--ink-soft)">JOIN CODE</div>
+          <span class="code" id="d_code"></span>
+        </div>
+      </div>
+
+      <label for="a_email">Add a student by email</label>
+      <div class="row">
+        <input id="a_email" class="grow" type="email" placeholder="student@college.edu">
+        <button id="btnAddStudent">Add student</button>
+      </div>
+
+      <label for="s_mins">Start an attendance session</label>
+      <div class="row">
+        <select id="s_mins" class="grow">
+          <option value="5">Open for 5 minutes</option>
+          <option value="15" selected>Open for 15 minutes</option>
+          <option value="30">Open for 30 minutes</option>
+          <option value="60">Open for 60 minutes</option>
+        </select>
+        <button id="btnStartSession">Start session</button>
+      </div>
+
+      <h2 style="margin-top:20px">Students in this class</h2>
+      <div id="roster"><p class="empty">No students yet.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ LIVE SESSION ============ -->
+  <section data-pane="live" class="hide">
+    <div class="card" id="noSession">
+      <p class="empty">No session running. Go to <strong>Classes</strong>, pick a class and press
+      <strong>Start session</strong>.</p>
+    </div>
+
+    <div class="card hide" id="liveCard">
+      <div class="spread">
+        <div><h2>Live session</h2><h3 id="l_class"></h3></div>
+        <button id="btnClose" class="danger small">Close session</button>
+      </div>
+
+      <div class="qrstage">
+        <div class="qrframe">
+          <canvas id="qr"></canvas>
+          <div class="ring"><span id="tick">10</span></div>
+        </div>
+        <p class="hint">This code changes every 10 seconds. A screenshot stops working almost
+          immediately, so it cannot be forwarded to an absent friend.</p>
+        <p class="hint" id="l_ends"></p>
+      </div>
+    </div>
+
+    <div class="card hide" id="liveList">
+      <div class="spread">
+        <h2>Present <span class="pill ok" id="l_count">0</span></h2>
+        <div class="row">
+          <input id="m_email" placeholder="Mark present by email" style="width:210px">
+          <button id="btnManual" class="ghost small">Mark manually</button>
+        </div>
+      </div>
+      <ul class="ledger" id="presentList"></ul>
+      <h2 style="margin-top:18px">Not yet scanned <span class="pill no" id="l_absent">0</span></h2>
+      <ul class="ledger" id="absentList"></ul>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section data-pane="history" class="hide">
+    <div class="card">
+      <h2>Past sessions</h2>
+      <select id="h_class"></select>
+      <div id="historyList"><p class="empty">Pick a class.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ REPORT ============ -->
+  <section data-pane="report" class="hide">
+    <div class="card">
+      <div class="spread">
+        <h2>Attendance percentage</h2>
+        <button id="btnCsv" class="ghost small">Download CSV</button>
+      </div>
+      <select id="r_class"></select>
+      <div id="reportBox"><p class="empty">Pick a class.</p></div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="made">MADE BY SAURAV</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/app.js"></script>
+<script>
+(async function () {
+  const user = await guard(["teacher", "admin"]);
+  if (!user) return;
+
+  $("#btnOut").onclick = () => Auth.logout();
+
+  /* ---------- tab switching ---------- */
+  $$(".tabs button").forEach((b) => b.onclick = () => {
+    $$(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+    $$("section[data-pane]").forEach((s) =>
+      s.classList.toggle("hide", s.dataset.pane !== b.dataset.tab));
+    hideMsg("#msg");
+  });
+
+  const err = (e) => showMsg("#msg", e.message, "err");
+  const ok  = (t) => showMsg("#msg", t, "ok");
+
+  let classes = [];
+  let selected = null;
+  let session = null;
+  let qrTimer = null, listTimer = null, left = 10;
+
+  /* ================= CLASSES ================= */
+
+  async function loadClasses() {
+    const r = await api("GET", "/api/classes");
+    classes = r.classes || [];
+
+    $("#classList").innerHTML = classes.length
+      ? `<ul class="ledger">${classes.map((c) => `
+          <li>
+            <span class="name">${esc(c.name)}<br>
+              <span class="meta">${esc(c.subject || "—")}</span></span>
+            <span class="pill">${esc(c.joinCode)}</span>
+            <button class="small ghost" data-pick="${esc(c.classId)}">Open</button>
+          </li>`).join("")}</ul>`
+      : `<p class="empty">No classes yet. Create one above.</p>`;
+
+    $$("[data-pick]").forEach((b) => b.onclick = () => pick(b.dataset.pick));
+
+    const opts = classes.map((c) =>
+      `<option value="${esc(c.classId)}">${esc(c.name)}</option>`).join("");
+    $("#h_class").innerHTML = opts;
+    $("#r_class").innerHTML = opts;
+  }
+
+  async function pick(classId) {
+    selected = classes.find((c) => c.classId === classId);
+    if (!selected) return;
+    $("#classDetail").classList.remove("hide");
+    $("#d_name").textContent = selected.name;
+    $("#d_code").textContent = selected.joinCode;
+    await loadRoster();
+  }
+
+  async function loadRoster() {
+    const r = await api("GET", "/api/enrollments", { query: { classId: selected.classId } });
+    const list = r.students || [];
+    $("#roster").innerHTML = list.length
+      ? `<ul class="ledger">${list.map((s) => `
+          <li><span class="name">${esc(s.studentName)}</span>
+              <span class="meta">${esc(s.studentEmail)}</span></li>`).join("")}</ul>`
+      : `<p class="empty">No students yet. Add one by email, or share the join code
+         <strong>${esc(selected.joinCode)}</strong> with your class.</p>`;
+  }
+
+  $("#btnCreateClass").onclick = async () => {
+    try {
+      if (!$("#c_name").value.trim()) throw new Error("Please enter a class name.");
+      await api("POST", "/api/classes",
+        { body: { name: $("#c_name").value.trim(), subject: $("#c_sub").value.trim() } });
+      $("#c_name").value = ""; $("#c_sub").value = "";
+      ok("Class created.");
+      await loadClasses();
+    } catch (e) { err(e); }
+  };
+
+  $("#btnAddStudent").onclick = async () => {
+    try {
+      const r = await api("POST", "/api/enrollments",
+        { body: { classId: selected.classId, email: $("#a_email").value.trim() } });
+      $("#a_email").value = "";
+      ok(`Added ${r.student.name}.`);
+      await loadRoster();
+    } catch (e) { err(e); }
+  };
+
+  /* ================= LIVE SESSION ================= */
+
+  $("#btnStartSession").onclick = async () => {
+    try {
+      const r = await api("POST", "/api/sessions",
+        { body: { classId: selected.classId, minutes: Number($("#s_mins").value) } });
+      session = r.session;
+      $$(".tabs button").find((b) => b.dataset.tab === "live").click();
+      startLive();
+    } catch (e) { err(e); }
+  };
+
+  function startLive() {
+    $("#noSession").classList.add("hide");
+    $("#liveCard").classList.remove("hide");
+    $("#liveList").classList.remove("hide");
+    $("#l_class").textContent = session.className;
+    $("#l_ends").textContent = "Session closes at " + when(session.expiresAt);
+
+    refreshQr();
+    clearInterval(qrTimer); clearInterval(listTimer);
+    qrTimer = setInterval(countdown, 1000);
+    listTimer = setInterval(refreshList, 4000);
+    refreshList();
+  }
+
+  function countdown() {
+    left--;
+    $("#tick").textContent = Math.max(left, 0);
+    $(".ring").style.setProperty("--deg", (left / 10) * 360 + "deg");
+    if (left <= 0) refreshQr();
+  }
+
+  async function refreshQr() {
+    try {
+      const r = await api("GET", "/api/sessions/qr", { query: { sessionId: session.sessionId } });
+      QRCode.toCanvas($("#qr"), r.token, { width: 300, margin: 1,
+        color: { dark: "#16243B", light: "#FFFFFF" } });
+      left = r.validForSeconds || 10;
+      $("#tick").textContent = left;
+    } catch (e) {
+      clearInterval(qrTimer); clearInterval(listTimer);
+      err(e);
+    }
+  }
+
+  async function refreshList() {
+    try {
+      const r = await api("GET", "/api/sessions/live", { query: { sessionId: session.sessionId } });
+      $("#l_count").textContent = r.present.length;
+      $("#l_absent").textContent = r.absent.length;
+      $("#presentList").innerHTML = r.present.length
+        ? r.present.map((p) => `<li><span class="name">${esc(p.studentName)}</span>
+            <span class="pill ok">${p.method}</span>
+            <span class="meta">${when(p.markedAt)}</span></li>`).join("")
+        : `<li class="empty">Waiting for the first scan...</li>`;
+      $("#absentList").innerHTML = r.absent.length
+        ? r.absent.map((a) => `<li><span class="name">${esc(a.studentName)}</span>
+            <span class="meta">${esc(a.studentEmail)}</span></li>`).join("")
+        : `<li class="empty">Everyone is present.</li>`;
+    } catch (e) { /* keep polling quietly */ }
+  }
+
+  $("#btnManual").onclick = async () => {
+    try {
+      await api("POST", "/api/attendance/manual",
+        { body: { sessionId: session.sessionId, email: $("#m_email").value.trim() } });
+      $("#m_email").value = "";
+      ok("Marked present manually.");
+      refreshList();
+    } catch (e) { err(e); }
+  };
+
+  $("#btnClose").onclick = async () => {
+    try {
+      await api("POST", "/api/sessions/close", { body: { sessionId: session.sessionId } });
+      clearInterval(qrTimer); clearInterval(listTimer);
+      $("#liveCard").classList.add("hide");
+      $("#noSession").classList.remove("hide");
+      ok("Session closed.");
+    } catch (e) { err(e); }
+  };
+
+  /* ================= HISTORY ================= */
+
+  $("#h_class").onchange = async () => {
+    try {
+      const r = await api("GET", "/api/sessions/history",
+        { query: { classId: $("#h_class").value } });
+      $("#historyList").innerHTML = r.sessions.length
+        ? `<table><tr><th>Started</th><th>Length</th><th>Status</th></tr>
+            ${r.sessions.map((s) => `<tr>
+              <td class="num">${when(s.startedAt)}</td>
+              <td class="num">${s.minutes} min</td>
+              <td><span class="pill ${s.status === "OPEN" ? "ok" : ""}">${s.status}</span></td>
+            </tr>`).join("")}</table>`
+        : `<p class="empty">No sessions yet for this class.</p>`;
+    } catch (e) { err(e); }
+  };
+
+  /* ================= REPORT ================= */
+
+  let lastReport = null;
+
+  $("#r_class").onchange = async () => {
+    try {
+      const r = await api("GET", "/api/reports/class", { query: { classId: $("#r_class").value } });
+      lastReport = r;
+      $("#reportBox").innerHTML = r.report.length
+        ? `<p class="empty">${r.totalSessions} session(s) held.</p>
+           <table><tr><th>Student</th><th>Present</th><th>Total</th><th>%</th></tr>
+            ${r.report.map((x) => `<tr>
+              <td>${esc(x.studentName)}<br><span class="meta">${esc(x.studentEmail)}</span></td>
+              <td class="num">${x.attended}</td>
+              <td class="num">${x.totalSessions}</td>
+              <td class="num"><span class="pill ${x.percentage >= 75 ? "ok" : "no"}">${x.percentage}%</span></td>
+            </tr>`).join("")}</table>`
+        : `<p class="empty">No students in this class yet.</p>`;
+    } catch (e) { err(e); }
+  };
+
+  $("#btnCsv").onclick = () => {
+    if (!lastReport) return err(new Error("Load a report first."));
+    const rows = [["Student", "Email", "Present", "Total sessions", "Percentage"],
+      ...lastReport.report.map((x) =>
+        [x.studentName, x.studentEmail, x.attended, x.totalSessions, x.percentage + "%"])];
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
+      + "\n\nGenerated by QR Attendance System - Made by Saurav";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = "attendance-report.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  await loadClasses();
+})();
+</script>
+</body>
+</html>

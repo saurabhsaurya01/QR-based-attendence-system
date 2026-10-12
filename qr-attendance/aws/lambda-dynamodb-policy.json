@@ -1,0 +1,27 @@
+{
+  "Comment": "QR Attendance System - Made by Saurav. Attach this to the Lambda execution role. It lets the Lambda touch ONLY these five tables and nothing else in your AWS account. Replace REGION and ACCOUNT_ID with your own values before saving.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AttendanceTablesOnly",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/att_Users",
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/att_Users/index/*",
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/att_Classes",
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/att_Enrollments",
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/att_Enrollments/index/*",
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/att_Sessions",
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/att_Attendance",
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/att_Attendance/index/*"
+      ]
+    }
+  ]
+}

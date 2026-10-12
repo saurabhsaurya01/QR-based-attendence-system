@@ -1,0 +1,10 @@
+﻿.env
+.env.*
+!.env.example
+!.env.sample
+node_modules/
+.aws/
+*.pem
+*.key
+credentials
+credentials.*
