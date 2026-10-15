@@ -119,7 +119,7 @@ button.small{padding:7px 11px;font-size:13px}
   position:relative;display:inline-block;
   padding:18px;background:#fff;border:2px solid var(--ink);border-radius:14px;
 }
-.qrframe canvas{display:block;width:min(74vw,300px);height:auto;image-rendering:pixelated}
+.qrframe canvas{display:block;width:min(74vw,300px)!important;max-width:100%!important;height:auto!important;aspect-ratio:1 / 1;image-rendering:pixelated}
 .ring{
   position:absolute;top:-16px;right:-16px;
   width:56px;height:56px;border-radius:50%;

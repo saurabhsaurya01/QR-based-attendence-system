@@ -174,6 +174,7 @@ function currentWindow() {
 }
 
 function sign(text) {
+  if (!QR_SECRET) throw new HttpError(500, "Server configuration error: QR_SECRET environment variable is missing.");
   return crypto
     .createHmac("sha256", QR_SECRET)
     .update(text)
@@ -561,6 +562,8 @@ const routes = {
   "POST /api/attendance/manual": async (user, body) => {
     requireTeacher(user);
     const s = await getSession(body.sessionId);
+    if (user.role === "teacher" && s.teacherId !== user.userId)
+      throw new HttpError(403, "This is not your session.");
     const student = await findUserByEmail(body.email || "");
     if (!student) throw new HttpError(404, "No student found with that email.");
 
@@ -666,7 +669,8 @@ export const handler = async (event) => {
   const method = event.requestContext?.http?.method || "GET";
   if (method === "OPTIONS") return reply(200, { ok: true });
 
-  const path = (event.rawPath || "/").replace(/\/+$/, "") || "/";
+  const rawPath = event.rawPath || "/";
+  const path = "/" + rawPath.replace(/^\/+/, "").replace(/\/+$/, "");
   const query = event.queryStringParameters || {};
 
   if (path === "/" || path === "/api/health")

@@ -90,7 +90,7 @@
 
       <div class="qrstage">
         <div class="qrframe">
-          <canvas id="qr"></canvas>
+          <canvas id="qr" width="300" height="300"></canvas>
           <div class="ring"><span id="tick">10</span></div>
         </div>
         <p class="hint">This code changes every 10 seconds. A screenshot stops working almost
@@ -138,11 +138,24 @@
 
 <footer class="made">MADE BY SAURAV</footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+<script src="assets/qrcode.min.js"></script>
 <script src="assets/config.js"></script>
 <script src="assets/app.js"></script>
 <script>
 (async function () {
+  async function ensureQRCode() {
+    if (typeof QRCode !== "undefined" && typeof QRCode.toCanvas === "function") return true;
+    return new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js";
+      s.onload = () => resolve(typeof QRCode !== "undefined" && typeof QRCode.toCanvas === "function");
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+  }
+
+  await ensureQRCode();
+
   const user = await guard(["teacher", "admin"]);
   if (!user) return;
 
@@ -154,6 +167,8 @@
     $$("section[data-pane]").forEach((s) =>
       s.classList.toggle("hide", s.dataset.pane !== b.dataset.tab));
     hideMsg("#msg");
+    if (b.dataset.tab === "history" && $("#h_class").value) $("#h_class").onchange?.();
+    if (b.dataset.tab === "report" && $("#r_class").value) $("#r_class").onchange?.();
   });
 
   const err = (e) => showMsg("#msg", e.message, "err");
@@ -211,11 +226,12 @@
   $("#btnCreateClass").onclick = async () => {
     try {
       if (!$("#c_name").value.trim()) throw new Error("Please enter a class name.");
-      await api("POST", "/api/classes",
+      const r = await api("POST", "/api/classes",
         { body: { name: $("#c_name").value.trim(), subject: $("#c_sub").value.trim() } });
       $("#c_name").value = ""; $("#c_sub").value = "";
       ok("Class created.");
       await loadClasses();
+      if (r.class?.classId) await pick(r.class.classId);
     } catch (e) { err(e); }
   };
 
@@ -231,12 +247,31 @@
 
   /* ================= LIVE SESSION ================= */
 
+  function endLiveSession(message) {
+    if (qrTimer) clearInterval(qrTimer);
+    if (listTimer) clearInterval(listTimer);
+    qrTimer = null;
+    listTimer = null;
+    session = null;
+    $("#liveCard").classList.add("hide");
+    $("#liveList").classList.add("hide");
+    $("#noSession").classList.remove("hide");
+    if (message) ok(message);
+  }
+
   $("#btnStartSession").onclick = async () => {
     try {
+      if (!selected) throw new Error("Please select a class first.");
+      if (qrTimer) clearInterval(qrTimer);
+      if (listTimer) clearInterval(listTimer);
+      qrTimer = null;
+      listTimer = null;
+
       const r = await api("POST", "/api/sessions",
         { body: { classId: selected.classId, minutes: Number($("#s_mins").value) } });
       session = r.session;
-      $$(".tabs button").find((b) => b.dataset.tab === "live").click();
+      const liveTab = $$(".tabs button").find((b) => b.dataset.tab === "live");
+      if (liveTab) liveTab.click();
       startLive();
     } catch (e) { err(e); }
   };
@@ -248,35 +283,67 @@
     $("#l_class").textContent = session.className;
     $("#l_ends").textContent = "Session closes at " + when(session.expiresAt);
 
-    refreshQr();
-    clearInterval(qrTimer); clearInterval(listTimer);
+    left = 10;
+    $("#tick").textContent = left;
+    $(".ring").style.setProperty("--deg", "360deg");
+
+    if (qrTimer) clearInterval(qrTimer);
+    if (listTimer) clearInterval(listTimer);
     qrTimer = setInterval(countdown, 1000);
     listTimer = setInterval(refreshList, 4000);
+    refreshQr();
     refreshList();
   }
 
   function countdown() {
+    if (!session) return;
+    if (Date.now() >= session.expiresAt) {
+      endLiveSession("Session duration ended.");
+      return;
+    }
     left--;
     $("#tick").textContent = Math.max(left, 0);
-    $(".ring").style.setProperty("--deg", (left / 10) * 360 + "deg");
+    $(".ring").style.setProperty("--deg", Math.max(0, (left / 10) * 360) + "deg");
     if (left <= 0) refreshQr();
   }
 
+  let refreshingQr = false;
   async function refreshQr() {
+    if (!session || refreshingQr) return;
+    refreshingQr = true;
     try {
+      if (typeof QRCode === "undefined" || !QRCode.toCanvas) {
+        await ensureQRCode();
+      }
+      if (typeof QRCode === "undefined" || !QRCode.toCanvas) {
+        throw new Error("QR library is not loaded. Please check your internet connection.");
+      }
       const r = await api("GET", "/api/sessions/qr", { query: { sessionId: session.sessionId } });
-      QRCode.toCanvas($("#qr"), r.token, { width: 300, margin: 1,
+      const canvas = $("#qr");
+      if (!canvas) throw new Error("QR canvas element not found.");
+      await QRCode.toCanvas(canvas, r.token, { width: 300, margin: 1,
         color: { dark: "#16243B", light: "#FFFFFF" } });
       left = r.validForSeconds || 10;
       $("#tick").textContent = left;
+      $(".ring").style.setProperty("--deg", "360deg");
     } catch (e) {
-      clearInterval(qrTimer); clearInterval(listTimer);
-      err(e);
+      if (e.message && (e.message.includes("ended") || e.message.includes("closed"))) {
+        endLiveSession(e.message);
+      } else {
+        if (qrTimer) clearInterval(qrTimer);
+        if (listTimer) clearInterval(listTimer);
+        qrTimer = null;
+        listTimer = null;
+        err(e);
+      }
+    } finally {
+      refreshingQr = false;
     }
   }
 
   async function refreshList() {
     try {
+      if (!session) return;
       const r = await api("GET", "/api/sessions/live", { query: { sessionId: session.sessionId } });
       $("#l_count").textContent = r.present.length;
       $("#l_absent").textContent = r.absent.length;
@@ -294,6 +361,7 @@
 
   $("#btnManual").onclick = async () => {
     try {
+      if (!session) throw new Error("No active session.");
       await api("POST", "/api/attendance/manual",
         { body: { sessionId: session.sessionId, email: $("#m_email").value.trim() } });
       $("#m_email").value = "";
@@ -304,12 +372,13 @@
 
   $("#btnClose").onclick = async () => {
     try {
-      await api("POST", "/api/sessions/close", { body: { sessionId: session.sessionId } });
-      clearInterval(qrTimer); clearInterval(listTimer);
-      $("#liveCard").classList.add("hide");
-      $("#noSession").classList.remove("hide");
-      ok("Session closed.");
-    } catch (e) { err(e); }
+      if (!session) return;
+      const sid = session.sessionId;
+      await api("POST", "/api/sessions/close", { body: { sessionId: sid } });
+      endLiveSession("Session closed.");
+    } catch (e) {
+      endLiveSession("Session closed locally (" + e.message + ").");
+    }
   };
 
   /* ================= HISTORY ================= */
@@ -363,7 +432,26 @@
     URL.revokeObjectURL(url);
   };
 
+  async function checkActiveSession() {
+    for (const c of classes) {
+      try {
+        const r = await api("GET", "/api/sessions/history", { query: { classId: c.classId } });
+        const openSession = (r.sessions || []).find((s) => s.status === "OPEN" && Date.now() < s.expiresAt);
+        if (openSession) {
+          session = openSession;
+          selected = c;
+          $("#classDetail").classList.remove("hide");
+          $("#d_name").textContent = selected.name;
+          $("#d_code").textContent = selected.joinCode;
+          startLive();
+          break;
+        }
+      } catch {}
+    }
+  }
+
   await loadClasses();
+  await checkActiveSession();
 })();
 </script>
 </body>

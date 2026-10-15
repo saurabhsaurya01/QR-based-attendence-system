@@ -139,7 +139,10 @@ async function api(method, path, { body, query } = {}) {
   const qs = query && Object.keys(query).length
     ? "?" + new URLSearchParams(query).toString() : "";
 
-  const send = async () => fetch(CFG.API_URL + path + qs, {
+  const baseApi = (CFG.API_URL || "").replace(/\/+$/, "");
+  const cleanPath = path.startsWith("/") ? path : "/" + path;
+
+  const send = async () => fetch(baseApi + cleanPath + qs, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -421,3 +424,17 @@ function demoBanner() {
   document.body.prepend(b);
 }
 document.addEventListener("DOMContentLoaded", demoBanner);
+
+window.Auth = Auth;
+window.api = api;
+window.store = store;
+window.guard = guard;
+window.routeByRole = routeByRole;
+window.$ = $;
+window.$$ = $$;
+window.showMsg = showMsg;
+window.hideMsg = hideMsg;
+window.esc = esc;
+window.when = when;
+window.DEMO = DEMO;
+

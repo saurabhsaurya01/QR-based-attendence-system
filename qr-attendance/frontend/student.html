@@ -86,11 +86,24 @@
 
 <footer class="made">MADE BY SAURAV</footer>
 
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="assets/html5-qrcode.min.js"></script>
 <script src="assets/config.js"></script>
 <script src="assets/app.js"></script>
 <script>
 (async function () {
+  async function ensureScanner() {
+    if (typeof Html5Qrcode !== "undefined") return true;
+    return new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
+      s.onload = () => resolve(typeof Html5Qrcode !== "undefined");
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+  }
+
+  await ensureScanner();
+
   const user = await guard(["student"]);
   if (!user) return;
 
@@ -115,6 +128,7 @@
 
   $("#btnScan").onclick = async () => {
     try {
+      if (!window.Html5Qrcode) await ensureScanner();
       if (!window.Html5Qrcode) throw new Error("Scanner library did not load. Check your internet.");
       scanner = new Html5Qrcode("reader");
       await scanner.start(
@@ -159,7 +173,11 @@
     } catch (e) { err(e); }
   }
 
-  $("#btnManualMark").onclick = () => mark($("#manualToken").value.trim());
+  $("#btnManualMark").onclick = () => {
+    const val = $("#manualToken").value.trim();
+    if (!val) return err(new Error("Please paste or type the attendance code text."));
+    mark(val);
+  };
 
   /* ================= CLASSES ================= */
 
